@@ -1,0 +1,1 @@
+cmd_/root/desktop/Tiny6410_Driver/1_LED/led.ko := arm-linux-ld -EL -r  -T /root/desktop/linux-2.6.38/scripts/module-common.lds --build-id  -o /root/desktop/Tiny6410_Driver/1_LED/led.ko /root/desktop/Tiny6410_Driver/1_LED/led.o /root/desktop/Tiny6410_Driver/1_LED/led.mod.o
