@@ -1,4 +1,4 @@
-obj-m	+= led.o
+obj-m	+= mled.o
 KDIR = /root/desktop/linux-2.6.38
 all :
 	make -C $(KDIR) M=$(PWD) modules CROSS_COMPILE=arm-linux- ARCH=arm

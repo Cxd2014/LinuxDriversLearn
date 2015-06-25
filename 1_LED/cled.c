@@ -1,5 +1,5 @@
 /*
- * Reference 
+ * 用字符设备驱动模型实现LED驱动
  */
 
 #include <linux/miscdevice.h>
