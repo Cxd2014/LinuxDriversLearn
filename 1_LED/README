@@ -1,0 +1,7 @@
+cled.c 是字符设备驱动
+mled.c 是混杂设备驱动
+
+更改Makefile
+	obj-m	+= mled.o
+	
+来编译不同的驱动
