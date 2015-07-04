@@ -73,9 +73,9 @@ static irqreturn_t gpio_key_irq(int irq, void *dev_id)
 	key_val = key_irq->number;//读取按键值
 
 	ev_press = 1;
-    wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
+	wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
 
-    kill_fasync(&key_fasync, SIGIO, POLL_IN); //发送信号
+	kill_fasync(&key_fasync, SIGIO, POLL_IN); //发送信号
 
 	return IRQ_RETVAL(IRQ_HANDLED);
 }

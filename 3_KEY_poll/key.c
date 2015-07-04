@@ -1,5 +1,7 @@
 /*
 * poll 机制实现按键驱动程序
+* 等待某些事件在规定时间按内发生，若发生则返回大于0的数
+* 若没有发生则返回 0 
 */
 
 #include <linux/module.h>
@@ -68,7 +70,7 @@ static irqreturn_t gpio_key_irq(int irq, void *dev_id)
 	key_val = key_irq->number;//读取按键值
 
 	ev_press = 1;
-    wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
+	wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
 
 	return IRQ_RETVAL(IRQ_HANDLED);
 }
@@ -95,7 +97,7 @@ static int gpio_key_open(struct inode *inode, struct file *file)
 ssize_t gpio_key_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
 	int tmp;
-	wait_event_interruptible(gpio_key_waitq, ev_press);//进入休眠状态
+	//wait_event_interruptible(gpio_key_waitq, ev_press);//进入休眠状态
 
 	tmp = copy_to_user(buf,&key_val,1);//将按键值传递给应用程序
 	if(tmp)
@@ -118,11 +120,11 @@ static int gpio_key_close(struct inode *inode, struct file *file)
 static unsigned int gpio_key_poll(struct file *file, poll_table *wait)
 {
 	unsigned int mask = 0;
-	poll_wait(file, &gpio_key_waitq, wait); // 不会立即休眠
+	poll_wait(file, &gpio_key_waitq, wait); // 为内核poll_table添加一个等待队列后休眠
 
-	if (ev_press)
-		mask |= POLLIN | POLLRDNORM;
-
+	if (ev_press) //当中断处理函数执行后，ev_press = 1 
+		mask |= POLLIN | POLLRDNORM; //返回 POLLIN | POLLRDNORM 表示驱动程序要发送数据给应用程序
+									 //返回 POLLOUT | POLLRDNORM 表示驱动程序可以接受应用程序发送的数据
 	return mask;
 }
 

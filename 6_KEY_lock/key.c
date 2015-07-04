@@ -1,5 +1,7 @@
 /*
-*	中断实现按键驱动
+* 互斥锁 按键驱动程序，实现同一时刻只能有一个应用程序
+* 打开驱动程序，当另一个应用程序要打开驱动程序时，使此应用程序休眠，或者返回
+* 直到前一个应用程序关闭驱动程序并唤醒第二个应用程序，在继续打开驱动程序
 */
 
 #include <linux/module.h>
@@ -37,8 +39,13 @@ static DECLARE_WAIT_QUEUE_HEAD(gpio_key_waitq);
 /* 中断事件标志, 中断服务程序将它置1，key_read将它清0 */
 static volatile int ev_press = 0;
 
+//定义一个发送信号的结构
+static struct fasync_struct *key_fasync; 
+
 //记录按键值
 static int key_val;
+
+static DEFINE_SEMAPHORE(key_lock); //定义一个互斥锁
 
 /* 定义一个结构体 */
 struct gpio_key_desc
@@ -61,8 +68,6 @@ static struct gpio_key_desc keys_irq[] =
 /* 中断处理函数 */
 static irqreturn_t gpio_key_irq(int irq, void *dev_id)
 {
-	
-
 	struct gpio_key_desc *key_irq = (struct gpio_key_desc *)dev_id;
 	
 	printk("irq=%d\n" ,irq);
@@ -70,7 +75,9 @@ static irqreturn_t gpio_key_irq(int irq, void *dev_id)
 	key_val = key_irq->number;//读取按键值
 
 	ev_press = 1;
-    wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
+	wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
+
+	kill_fasync(&key_fasync, SIGIO, POLL_IN); //发送信号
 
 	return IRQ_RETVAL(IRQ_HANDLED);
 }
@@ -80,6 +87,9 @@ static int gpio_key_open(struct inode *inode, struct file *file)
 	int i;
 	int err = 0;
 	
+	//获取信号量
+	down(&key_lock);
+
 	for(i=0;i<4;i++)//申请中断
 	{
 				/* 申请中断  中断号       中断处理函数  中断类型-上升沿             */
@@ -97,12 +107,6 @@ static int gpio_key_open(struct inode *inode, struct file *file)
 ssize_t gpio_key_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
 	int tmp;
-	
-	/*当中断发生时，先执行中断程序，然后进入 wait_event_interruptible 函数
-	 *判断 ev_press = 1 时不休眠，执行下面的程序，当 ev_press = 0 时休眠
-	 */
-	wait_event_interruptible(gpio_key_waitq, ev_press);//进入休眠状态
-
 	tmp = copy_to_user(buf,&key_val,1);//将按键值传递给应用程序
 	if(tmp)
 		printk("copy_from_user failed!\n");
@@ -118,14 +122,39 @@ static int gpio_key_close(struct inode *inode, struct file *file)
 	{
 		free_irq(keys_irq[i].irq,&keys_irq[i]);
 	}
+
+	up(&key_lock); //释放信号量
 	return 0;
 }
+
+static unsigned int gpio_key_poll(struct file *file, poll_table *wait)
+{
+	unsigned int mask = 0;
+	poll_wait(file, &gpio_key_waitq, wait); // 为内核poll_table添加一个等待队列后休眠
+
+	if (ev_press) //当中断处理函数执行后，ev_press = 1 
+		mask |= POLLIN | POLLRDNORM; 
+		//返回 POLLIN | POLLRDNORM 表示驱动程序要发送数据给应用程序
+		//返回 POLLOUT | POLLRDNORM 表示驱动程序可以接受应用程序发送的数据
+
+	return mask;
+}
+
+/* 初始化 key_fasync 结构体*/
+static int gpio_key_fasync(int fd, struct file *filp, int on)
+{	
+	//printk("gpio_key_fasync\n");
+	return fasync_helper(fd, filp, on, &key_fasync);
+}
+
 
 static const struct file_operations gpio_key_fops = {
 	.owner = THIS_MODULE,
 	.open = gpio_key_open,
 	.read = gpio_key_read,
 	.release = gpio_key_close,
+	.poll = gpio_key_poll,
+	.fasync = gpio_key_fasync,
 };
 
 
