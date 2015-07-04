@@ -1,7 +1,5 @@
 /*
-* 互斥锁 按键驱动程序，实现同一时刻只能有一个应用程序
-* 打开驱动程序，当另一个应用程序要打开驱动程序时，使此应用程序休眠，或者返回
-* 直到前一个应用程序关闭驱动程序后自动唤醒第二个应用程序，在继续打开驱动程序
+*  clock 定时器按键驱动程序，实现按键去抖动
 */
 
 #include <linux/module.h>
@@ -47,6 +45,8 @@ static int key_val;
 
 static DEFINE_SEMAPHORE(key_lock); //定义一个互斥锁
 
+static struct timer_list key_timer;//定义一个定时器防按键抖动
+
 /* 定义一个结构体 */
 struct gpio_key_desc
 {
@@ -70,16 +70,20 @@ static irqreturn_t gpio_key_irq(int irq, void *dev_id)
 {
 	struct gpio_key_desc *key_irq = (struct gpio_key_desc *)dev_id;
 	
-	printk("irq=%d\n" ,irq);
+	/* 200ms后启动定时器 */	
+	mod_timer(&key_timer, jiffies+HZ/5);
 
 	key_val = key_irq->number;//读取按键值
 
+	return IRQ_RETVAL(IRQ_HANDLED);
+}
+
+/* 定时器处理函数 */
+static void key_timer_function(unsigned long tdata)
+{
 	ev_press = 1;
 	wake_up_interruptible(&gpio_key_waitq);//唤醒休眠进程
-
 	kill_fasync(&key_fasync, SIGIO, POLL_IN); //发送信号
-
-	return IRQ_RETVAL(IRQ_HANDLED);
 }
 
 static int gpio_key_open(struct inode *inode, struct file *file)
@@ -179,6 +183,11 @@ static int __init gpio_key_init(void)
 	if (IS_ERR(cd))
 		return PTR_ERR(cd);
 
+	//初始化定时器
+	init_timer(&key_timer);
+	key_timer.function = key_timer_function;
+	add_timer(&key_timer); 
+
 	printk(DEVICE_NAME" init sucess\n");
 	
 	return 0;
@@ -189,6 +198,8 @@ static void __exit gpio_key_exit(void)
 	unregister_chrdev(major,DEVICE_NAME);
 	device_destroy(gpio_key_class,MKDEV(major,0) );
 	class_destroy(gpio_key_class);
+
+	del_timer(&key_timer); //注销定时器
 
 	printk(DEVICE_NAME"exit sucess\n");
 }
