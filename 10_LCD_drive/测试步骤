@@ -1,0 +1,5 @@
+1、使用modules文件中的zImage内核进行测试
+2、先insmod装载modules文件中的三个模块
+3、在装载lcd.ko文件
+4、echo hello > /dev/tty1  (可以看到LCD上有文字出现证明实验成功)
+5、这有一个问题就是装载了驱动后就不能卸载只能重启
